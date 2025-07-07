@@ -20,6 +20,10 @@ database.init_db()
 #                      CORE AI/ML LOGIC AND CLASSES
 # ==============================================================================
 
+# --- Configuration Constants ---
+NUM_MACHINES = 10  # <-- CHANGE: Increased number of machines
+FAULTY_MACHINES = [3, 7] # <-- CHANGE: Designated faulty machines
+
 @dataclass
 class SupervisedConfig:
     sequence_length: int = 100
@@ -29,7 +33,7 @@ class SupervisedConfig:
 class AdvancedRLConfig:
     state_dim: int = 4
     action_dim: int = 4
-    num_agents: int = 4
+    num_agents: int = NUM_MACHINES # Use the constant here
 
 FEATURE_NAMES = [
     'vibration', 'temperature', 'pressure', 'current',
@@ -59,15 +63,24 @@ class HybridMaintenanceSystem:
     def predict_health(self, sensor_data: np.ndarray) -> Dict[str, Any]:
         if len(sensor_data.shape) == 2:
             sensor_data = sensor_data[np.newaxis, ...]
-        predicted_value = self.health_model.predict(sensor_data)[0][0]
+        predicted_value = self.health_model.predict(sensor_data, verbose=0)[0][0]
         health_score = 1 / (1 + max(0, predicted_value))
         return {'health_score': float(health_score), 'failure_prob': 1 - float(health_score), 'rul': float(health_score) * 100}
 
     def monitor_machine(self, machine_id: int, sensor_data: np.ndarray) -> Dict[str, Any]:
         health_metrics = self.predict_health(sensor_data)
+
+        # <-- CHANGE: Artificially degrade faulty machines sometimes
+        if machine_id in FAULTY_MACHINES and random.random() < 0.25: # 25% chance of failure event
+            health_score = random.uniform(0.2, 0.5)
+            health_metrics['health_score'] = health_score
+            health_metrics['failure_prob'] = 1 - health_score
+            health_metrics['rul'] = health_score * 100
+
         if health_metrics['health_score'] < 0.5: action = 3
         elif health_metrics['health_score'] < 0.75: action = 2
         else: action = 0
+        
         explanation = self.explainability.explain_prediction()
         report = {
             'machine_id': machine_id, 'timestamp': datetime.utcnow().isoformat(), 'health_metrics': health_metrics,
@@ -80,9 +93,12 @@ class HybridMaintenanceSystem:
     def visualize_results(self) -> plt.Figure:
         fig, ax = plt.subplots(figsize=(10, 4))
         health_df = pd.DataFrame(self.metrics['health_predictions'][-100:])
-        sns.lineplot(data=health_df, ax=ax)
+        sns.lineplot(data=health_df['health_score'], ax=ax, label="Health Score")
         ax.set_title('Health Score Over Time')
         ax.set_ylim(0, 1)
+        ax.axhline(0.5, color='red', linestyle='--', label='Critical Threshold')
+        ax.axhline(0.75, color='orange', linestyle='--', label='Warning Threshold')
+        ax.legend()
         plt.tight_layout()
         return fig
 
@@ -116,9 +132,13 @@ trained_model = load_trained_model()
 X_data = load_simulation_data()
 
 if trained_model:
-    system = HybridMaintenanceSystem(trained_model)
+    if 'system' not in st.session_state:
+        st.session_state.system = HybridMaintenanceSystem(trained_model)
+    system = st.session_state.system
+
     st.sidebar.header("Simulation Controls")
-    machine_id = st.sidebar.selectbox('Select a Machine to Monitor', options=list(range(4)), format_func=lambda x: f"Machine #{x}")
+    # <-- CHANGE: Updated the machine selection range
+    machine_id = st.sidebar.selectbox('Select a Machine to Monitor', options=list(range(NUM_MACHINES)), format_func=lambda x: f"Machine #{x}")
 
     if 'run_simulation' not in st.session_state: st.session_state.run_simulation = False
     if st.sidebar.button('▶️ Start Live Simulation', use_container_width=True, type="primary"):
@@ -144,7 +164,11 @@ if trained_model:
                 col2.metric("Failure Probability", f"{report['health_metrics']['failure_prob']:.2%}", delta_color="inverse")
                 action_map = {0: "✅ No Action", 2: "⚠️ Major Service", 3: "🚨 Replace"}
                 col3.metric("Recommended Action", action_map.get(report['maintenance_action']['action'], 'Unknown'))
-                st.line_chart(pd.DataFrame(system.metrics['health_predictions']).iloc[-100:]['health_score'])
+                
+                fig = system.visualize_results()
+                st.pyplot(fig)
+                plt.close(fig)
+
             time.sleep(2)
     else:
         st.info("Select a machine and click 'Start Live Simulation' to begin.")
