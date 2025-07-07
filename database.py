@@ -7,18 +7,16 @@ DB_FILE = "maintenance_system.db"
 
 def init_db():
     """
-    Initializes the database. Deletes the old table to ensure the schema is up-to-date,
-    then creates a new one.
+    Initializes the database. Deletes the old DB file to ensure a fresh start,
+    then creates a new database and table.
     """
-    # This function uses a more robust method of deleting the old DB file first
     if os.path.exists(DB_FILE):
         os.remove(DB_FILE)
 
-    # The 'check_same_thread=False' is crucial for Streamlit compatibility
-    with sqlite3.connect(DB_ILE, check_same_thread=False) as conn:
+    # ✅ FIX: Corrected DB_ILE to DB_FILE
+    with sqlite3.connect(DB_FILE, check_same_thread=False) as conn:
         cursor = conn.cursor()
-
-        # Create the table with the correct, final schema
+        
         cursor.execute("""
             CREATE TABLE reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
