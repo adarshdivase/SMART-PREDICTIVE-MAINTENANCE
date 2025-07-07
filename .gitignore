@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-selfcheck.json
+
+# Streamlit
+.streamlit/
+
+# Database file
+maintenance_system.db
+
+# IDE files
+.idea/
+.vscode/
