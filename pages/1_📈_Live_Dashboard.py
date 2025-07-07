@@ -13,7 +13,7 @@ import seaborn as sns
 import time
 import database
 
-# ✅ FIX: Initialize the database at the start of this page
+# Initialize the database at the start of this page
 database.init_db()
 
 # ==============================================================================
@@ -21,8 +21,16 @@ database.init_db()
 # ==============================================================================
 
 # --- Configuration Constants ---
-NUM_MACHINES = 10  # <-- CHANGE: Increased number of machines
-FAULTY_MACHINES = [3, 7] # <-- CHANGE: Designated faulty machines
+NUM_MACHINES = 10
+FAULTY_MACHINES = [2, 5, 7, 9] # <-- CHANGE: Increased to 4 faulty machines
+
+# <-- CHANGE: Added predefined fault scenarios
+FAULT_SCENARIOS = [
+    {"problem": "Critical Overheating Detected", "resolution": "Action: Immediately inspect cooling system and reduce machine load."},
+    {"problem": "Excessive Vibration Anomaly", "resolution": "Action: Check motor bearings and alignment. Schedule for balancing."},
+    {"problem": "Pressure Drop Exceeds Safe Limits", "resolution": "Action: Inspect for leaks in hydraulic lines and check pump integrity."},
+    {"problem": "Unstable Voltage Fluctuation", "resolution": "Action: Verify power supply unit and check for loose electrical connections."}
+]
 
 @dataclass
 class SupervisedConfig:
@@ -33,7 +41,7 @@ class SupervisedConfig:
 class AdvancedRLConfig:
     state_dim: int = 4
     action_dim: int = 4
-    num_agents: int = NUM_MACHINES # Use the constant here
+    num_agents: int = NUM_MACHINES
 
 FEATURE_NAMES = [
     'vibration', 'temperature', 'pressure', 'current',
@@ -69,22 +77,35 @@ class HybridMaintenanceSystem:
 
     def monitor_machine(self, machine_id: int, sensor_data: np.ndarray) -> Dict[str, Any]:
         health_metrics = self.predict_health(sensor_data)
+        
+        problem_description = "No issue detected."
+        suggested_resolution = "Continue standard operation."
 
-        # <-- CHANGE: Artificially degrade faulty machines sometimes
+        # Artificially degrade faulty machines sometimes
         if machine_id in FAULTY_MACHINES and random.random() < 0.25: # 25% chance of failure event
             health_score = random.uniform(0.2, 0.5)
             health_metrics['health_score'] = health_score
             health_metrics['failure_prob'] = 1 - health_score
             health_metrics['rul'] = health_score * 100
+            
+            # <-- CHANGE: Select a random fault scenario
+            fault = random.choice(FAULT_SCENARIOS)
+            problem_description = fault["problem"]
+            suggested_resolution = fault["resolution"]
 
+        # Determine action based on health score
         if health_metrics['health_score'] < 0.5: action = 3
         elif health_metrics['health_score'] < 0.75: action = 2
         else: action = 0
         
         explanation = self.explainability.explain_prediction()
         report = {
-            'machine_id': machine_id, 'timestamp': datetime.utcnow().isoformat(), 'health_metrics': health_metrics,
-            'maintenance_action': {'action': action}, 'explanation': explanation
+            'machine_id': machine_id, 'timestamp': datetime.utcnow().isoformat(),
+            'health_metrics': health_metrics,
+            'maintenance_action': {'action': action},
+            'explanation': explanation,
+            'problem_description': problem_description,
+            'suggested_resolution': suggested_resolution
         }
         self.metrics['health_predictions'].append(report['health_metrics'])
         self.metrics['explanations'].append(report['explanation'])
@@ -137,7 +158,6 @@ if trained_model:
     system = st.session_state.system
 
     st.sidebar.header("Simulation Controls")
-    # <-- CHANGE: Updated the machine selection range
     machine_id = st.sidebar.selectbox('Select a Machine to Monitor', options=list(range(NUM_MACHINES)), format_func=lambda x: f"Machine #{x}")
 
     if 'run_simulation' not in st.session_state: st.session_state.run_simulation = False
@@ -159,12 +179,23 @@ if trained_model:
             database.add_report(report)
             with placeholder.container():
                 st.header(f"Live Status for Machine #{machine_id}", anchor=False)
+                
+                # Display metrics
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Health Score", f"{report['health_metrics']['health_score']:.2f}")
                 col2.metric("Failure Probability", f"{report['health_metrics']['failure_prob']:.2%}", delta_color="inverse")
                 action_map = {0: "✅ No Action", 2: "⚠️ Major Service", 3: "🚨 Replace"}
                 col3.metric("Recommended Action", action_map.get(report['maintenance_action']['action'], 'Unknown'))
                 
+                # <-- CHANGE: Display problem and resolution
+                st.divider()
+                if report['problem_description'] != "No issue detected.":
+                    st.error(f"**Problem:** {report['problem_description']}", icon="🚨")
+                    st.warning(f"**Suggested Resolution:** {report['suggested_resolution']}", icon="🛠️")
+                else:
+                    st.success("**Status:** All systems nominal.", icon="✅")
+
+                # Display chart
                 fig = system.visualize_results()
                 st.pyplot(fig)
                 plt.close(fig)
