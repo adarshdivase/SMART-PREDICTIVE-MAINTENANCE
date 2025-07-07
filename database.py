@@ -2,20 +2,25 @@ import sqlite3
 import pandas as pd
 import json
 
-# Define the name of the database file
+# Define the name of the database file that will be created
 DB_FILE = "maintenance_system.db"
 
 def init_db():
     """
     Initializes the database.
-    Creates the 'reports' table if it doesn't already exist.
+    This function deletes the old table (if it exists) to ensure the schema is always up-to-date,
+    then creates a new, correctly structured table.
     """
     # The 'check_same_thread=False' is crucial for Streamlit compatibility
     with sqlite3.connect(DB_FILE, check_same_thread=False) as conn:
         cursor = conn.cursor()
-        # The 'IF NOT EXISTS' clause prevents errors on subsequent runs
+
+        # Drop the table if it exists to ensure a fresh start on every app boot
+        cursor.execute("DROP TABLE IF EXISTS reports")
+
+        # Create the table with the correct, final schema
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS reports (
+            CREATE TABLE reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
                 machine_id INTEGER NOT NULL,
@@ -55,7 +60,7 @@ def get_reports_by_machine(machine_id: int) -> pd.DataFrame:
     Retrieves all historical reports for a specific machine.
     Returns the data as a pandas DataFrame for easy analysis and plotting.
     """
-    # The 'check_same_thread=False' is needed here as well
+    # The 'check_same_thread=False' is needed here as well for Streamlit
     with sqlite3.connect(DB_FILE, check_same_thread=False) as conn:
         # Use a parameterized query to prevent SQL injection vulnerabilities
         query = "SELECT * FROM reports WHERE machine_id = ? ORDER BY timestamp ASC"
