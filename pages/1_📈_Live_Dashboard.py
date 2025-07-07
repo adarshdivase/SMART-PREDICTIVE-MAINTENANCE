@@ -94,11 +94,22 @@ class HybridMaintenanceSystem:
         self.multi_agent_system = MultiAgentPPO(rl_config)
         self.explainability = ExplainabilityModule(FEATURE_NAMES)
         self.metrics = {'health_predictions': [], 'maintenance_decisions': [], 'explanations': []}
+
     def predict_health(self, sensor_data: np.ndarray) -> Dict[str, Any]:
         health_score = tf.sigmoid(tf.reduce_mean(sensor_data[:, :, 0]))
         return {'health_score': float(health_score), 'failure_prob': 1 - float(health_score), 'rul': float(health_score) * 100}
+
     def monitor_machine(self, machine_id: int, sensor_data: np.ndarray) -> Dict[str, Any]:
-        health_metrics = self.predict_health(sensor_data)
+        # ✅ THE FIX IS HERE: Add a batch dimension before predicting
+        if len(sensor_data.shape) == 2:
+            sensor_data_batch = sensor_data[np.newaxis, ...] # Converts shape (100, 10) to (1, 100, 10)
+        else:
+            sensor_data_batch = sensor_data
+
+        # Use the new 3D variable for prediction
+        health_metrics = self.predict_health(sensor_data_batch)
+
+        # The rest of the function remains the same
         state = np.array(list(health_metrics.values()), dtype=np.float32)
         action, value, policy = self.multi_agent_system.get_action(machine_id % self.rl_config.num_agents, state)
         explanation = self.explainability.explain_prediction()
@@ -110,6 +121,7 @@ class HybridMaintenanceSystem:
         self.metrics['maintenance_decisions'].append(report['maintenance_action'])
         self.metrics['explanations'].append(report['explanation'])
         return report
+
     def visualize_results(self) -> plt.Figure:
         fig, axes = plt.subplots(1, 2, figsize=(15, 5))
         health_df = pd.DataFrame(self.metrics['health_predictions'][-100:])
