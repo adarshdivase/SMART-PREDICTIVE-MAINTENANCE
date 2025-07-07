@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 import database
 
-st.set_page_config(page_title="Historical Explorer", page_icon="🏛️", layout="wide")
+# ✅ FIX: Initialize the database at the start of this page
+database.init_db()
 
+st.set_page_config(page_title="Historical Explorer", page_icon="🏛️", layout="wide")
 st.title("🏛️ Historical Data Explorer")
 st.markdown("Analyze past performance and maintenance records for any machine in the system.")
 
