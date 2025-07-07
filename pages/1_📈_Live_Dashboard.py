@@ -22,9 +22,8 @@ database.init_db()
 
 # --- Configuration Constants ---
 NUM_MACHINES = 10
-FAULTY_MACHINES = [2, 5, 7, 9] # <-- CHANGE: Increased to 4 faulty machines
+FAULTY_MACHINES = [2, 5, 7, 9]
 
-# <-- CHANGE: Added predefined fault scenarios
 FAULT_SCENARIOS = [
     {"problem": "Critical Overheating Detected", "resolution": "Action: Immediately inspect cooling system and reduce machine load."},
     {"problem": "Excessive Vibration Anomaly", "resolution": "Action: Check motor bearings and alignment. Schedule for balancing."},
@@ -78,27 +77,27 @@ class HybridMaintenanceSystem:
     def monitor_machine(self, machine_id: int, sensor_data: np.ndarray) -> Dict[str, Any]:
         health_metrics = self.predict_health(sensor_data)
         
+        # ✅ FIX 1: Initialize default values for every run
         problem_description = "No issue detected."
         suggested_resolution = "Continue standard operation."
 
         # Artificially degrade faulty machines sometimes
-        if machine_id in FAULTY_MACHINES and random.random() < 0.25: # 25% chance of failure event
+        if machine_id in FAULTY_MACHINES and random.random() < 0.25:
             health_score = random.uniform(0.2, 0.5)
             health_metrics['health_score'] = health_score
             health_metrics['failure_prob'] = 1 - health_score
             health_metrics['rul'] = health_score * 100
             
-            # <-- CHANGE: Select a random fault scenario
             fault = random.choice(FAULT_SCENARIOS)
             problem_description = fault["problem"]
             suggested_resolution = fault["resolution"]
 
-        # Determine action based on health score
         if health_metrics['health_score'] < 0.5: action = 3
         elif health_metrics['health_score'] < 0.75: action = 2
         else: action = 0
         
         explanation = self.explainability.explain_prediction()
+        # ✅ FIX 1 (cont.): Ensure these keys are always added to the report
         report = {
             'machine_id': machine_id, 'timestamp': datetime.utcnow().isoformat(),
             'health_metrics': health_metrics,
@@ -180,22 +179,20 @@ if trained_model:
             with placeholder.container():
                 st.header(f"Live Status for Machine #{machine_id}", anchor=False)
                 
-                # Display metrics
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Health Score", f"{report['health_metrics']['health_score']:.2f}")
                 col2.metric("Failure Probability", f"{report['health_metrics']['failure_prob']:.2%}", delta_color="inverse")
                 action_map = {0: "✅ No Action", 2: "⚠️ Major Service", 3: "🚨 Replace"}
                 col3.metric("Recommended Action", action_map.get(report['maintenance_action']['action'], 'Unknown'))
                 
-                # <-- CHANGE: Display problem and resolution
                 st.divider()
-                if report['problem_description'] != "No issue detected.":
+                # ✅ FIX 2: Use the safer .get() method to access the key
+                if report.get("problem_description") and report.get("problem_description") != "No issue detected.":
                     st.error(f"**Problem:** {report['problem_description']}", icon="🚨")
                     st.warning(f"**Suggested Resolution:** {report['suggested_resolution']}", icon="🛠️")
                 else:
                     st.success("**Status:** All systems nominal.", icon="✅")
 
-                # Display chart
                 fig = system.visualize_results()
                 st.pyplot(fig)
                 plt.close(fig)
